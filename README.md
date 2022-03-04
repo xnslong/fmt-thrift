@@ -25,3 +25,18 @@ it will output the following JSON.
   }
 }
 ```
+
+# How to use it
+
+- go1.16
+
+  - ```bash
+    go get github.com/xnslong/fmt-thrift
+    ```
+    
+- [jq](https://github.com/stedolan/jq): 
+
+  - As this tool outputs in JSON format, jq will help a lot to display (manipulate) the result.
+
+
+
