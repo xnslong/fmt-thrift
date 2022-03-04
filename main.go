@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,7 +13,13 @@ import (
 )
 
 func main() {
-	transport := thrift.NewStreamTransportR(os.Stdin)
+	in := bufio.NewReader(os.Stdin)
+	err := discardPossibleFrameSize(in)
+	if err != nil {
+		log.Fatal("read data error", err)
+	}
+
+	transport := thrift.NewStreamTransportR(in)
 	defer transport.Close()
 
 	proto := thrift.NewTBinaryProtocol(transport, false, false)
@@ -19,31 +27,43 @@ func main() {
 	m := make(map[string]interface{})
 	ctx := context.Background()
 
-	err := readMsg(ctx, m, proto)
+	err = readMsg(ctx, m, proto)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("read message error", err)
 	}
 
 	bytes, err := json.Marshal(m)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("json marshal error", err)
 	}
 
 	fmt.Printf("%s", bytes)
 }
 
+func discardPossibleFrameSize(in *bufio.Reader) error {
+	peek, err := in.Peek(4)
+	if err != nil {
+		return err
+	}
+	v := binary.BigEndian.Uint32(peek)
+	if int(v)&thrift.VERSION_MASK != thrift.VERSION_1 {
+		_, _ = in.Discard(4)
+	}
+	return nil
+}
+
 func MessageType(mt thrift.TMessageType) string {
 	switch mt {
 	case thrift.CALL:
-		return "call"
+		return "CALL"
 	case thrift.REPLY:
-		return "reply"
+		return "REPLY"
 	case thrift.EXCEPTION:
-		return "exception"
+		return "EXCEPTION"
 	case thrift.ONEWAY:
-		return "oneway"
+		return "ONEWAY"
 	default:
-		return "invalid"
+		return "INVALID"
 	}
 }
 
@@ -53,16 +73,16 @@ func readMsg(ctx context.Context, m map[string]interface{}, proto *thrift.TBinar
 		return err
 	}
 
-	m["1 name"] = name
-	m["2 seqid"] = seqId
-	m["3 type"] = MessageType(typeId)
+	m["1 NAME"] = name
+	m["2 SEQ_ID"] = seqId
+	m["3 TYPE"] = MessageType(typeId)
 
 	structure, err := readStruct(ctx, proto)
 	if err != nil {
 		return err
 	}
 	if structure != nil {
-		m["4 body"] = structure
+		m["4 PAYLOAD"] = structure
 	}
 
 	err = proto.ReadMessageEnd()
@@ -131,7 +151,7 @@ func readList(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]in
 func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]interface{}, error) {
 	elemType, size, err := proto.ReadSetBegin()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid set begin: %w", err)
 	}
 
 	m := make(map[string]interface{}, size+1)
@@ -140,7 +160,7 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 	for i := 0; i < size; i++ {
 		value, err := readValue(ctx, proto, elemType)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read elem error: %w", err)
 		}
 
 		m[fmt.Sprintf("%d", i)] = value
@@ -148,39 +168,42 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 
 	err = proto.ReadSetEnd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid set end: %w", err)
 	}
 
 	return m, nil
 }
 
-func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[interface{}]interface{}, error) {
+func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]interface{}, error) {
 	keyType, elemType, size, err := proto.ReadMapBegin()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid map begin: %w", err)
 	}
 
-	m := make(map[interface{}]interface{}, size+2)
-	m["_key_type"] = keyType.String()
-	m["_elem_type"] = elemType.String()
+	m := make(map[string]interface{}, 3)
+	m["1 key_type"] = keyType.String()
+	m["2 elem_type"] = elemType.String()
+
+	entries := make(map[string]interface{}, size)
+	m["3 entries"] = entries
 
 	for i := 0; i < size; i++ {
 		key, err := readValue(ctx, proto, keyType)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read key error: %w", err)
 		}
 
 		value, err := readValue(ctx, proto, elemType)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read value error: %w", err)
 		}
 
-		m[key] = value
+		entries[fmt.Sprintf("%v", key)] = value
 	}
 
 	err = proto.ReadSetEnd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid map end: %w", err)
 	}
 
 	return m, nil
