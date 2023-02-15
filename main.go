@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,9 @@ import (
 )
 
 func main() {
+	flag.BoolVar(&withType, "t", true, "print field type")
+	flag.Parse()
+
 	in := bufio.NewReader(os.Stdin)
 	err := discardPossibleFrameSize(in)
 	if err != nil {
@@ -103,7 +107,7 @@ func readList(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]in
 			return nil, "", err
 		}
 
-		m[fmt.Sprintf("%d %s", i, anno)] = value
+		m[keyOf(i, anno)] = value
 	}
 
 	err = proto.ReadListEnd()
@@ -128,7 +132,7 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 			return nil, "", err
 		}
 
-		m[fmt.Sprintf("%d %s", i, anno)] = value
+		m[keyOf(i, anno)] = value
 	}
 
 	err = proto.ReadSetEnd()
@@ -158,7 +162,7 @@ func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[interface{
 			return nil, "", err
 		}
 
-		m[fmt.Sprintf("%s %s", key, valAnno)] = value
+		m[keyOf(key, valAnno)] = value
 	}
 
 	err = proto.ReadSetEnd()
@@ -192,7 +196,7 @@ func readStruct(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]
 			return nil, err
 		}
 
-		m[fmt.Sprintf("%d %s", seqId, anno)] = val
+		m[keyOf(seqId, anno)] = val
 	}
 
 	err = proto.ReadStructEnd()
