@@ -100,6 +100,7 @@ func readList(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]in
 	}
 
 	m := make(map[string]interface{}, size+1)
+	var realValAnno string = elemType.String()
 
 	for i := 0; i < size; i++ {
 		value, anno, err := readValue(ctx, proto, elemType)
@@ -107,6 +108,9 @@ func readList(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]in
 			return nil, "", err
 		}
 
+		if realValAnno == elemType.String() && realValAnno != anno {
+			realValAnno = anno
+		}
 		m[keyOf(i, anno)] = value
 	}
 
@@ -115,7 +119,7 @@ func readList(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]in
 		return nil, "", err
 	}
 
-	return m, "list<" + elemType.String() + ">", nil
+	return m, "list<" + realValAnno + ">", nil
 }
 
 func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]interface{}, string, error) {
@@ -125,6 +129,7 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 	}
 
 	m := make(map[string]interface{}, size+1)
+	var realValAnno string = elemType.String()
 
 	for i := 0; i < size; i++ {
 		value, anno, err := readValue(ctx, proto, elemType)
@@ -132,6 +137,9 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 			return nil, "", err
 		}
 
+		if realValAnno == elemType.String() && realValAnno != anno {
+			realValAnno = anno
+		}
 		m[keyOf(i, anno)] = value
 	}
 
@@ -140,29 +148,38 @@ func readSet(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]int
 		return nil, "", err
 	}
 
-	return m, "set<" + elemType.String() + ">", nil
+	return m, "set<" + realValAnno + ">", nil
 }
 
-func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[interface{}]interface{}, string, error) {
+func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]interface{}, string, error) {
 	keyType, elemType, size, err := proto.ReadMapBegin()
 	if err != nil {
 		return nil, "", err
 	}
 
-	m := make(map[interface{}]interface{}, size+2)
+	m := make(map[string]interface{}, size+2)
+
+	var realKeyAnno string = keyType.String()
+	var realValAnno string = elemType.String()
 
 	for i := 0; i < size; i++ {
-		key, _, err := readValue(ctx, proto, keyType)
+		key, keyAnno, err := readValue(ctx, proto, keyType)
 		if err != nil {
 			return nil, "", err
+		}
+		if realKeyAnno == keyType.String() && realKeyAnno != keyAnno {
+			realKeyAnno = keyAnno
 		}
 
 		value, valAnno, err := readValue(ctx, proto, elemType)
 		if err != nil {
 			return nil, "", err
 		}
+		if realValAnno == elemType.String() && realValAnno != valAnno {
+			realValAnno = valAnno
+		}
 
-		m[keyOf(key, valAnno)] = value
+		m[fmt.Sprint(key)] = value
 	}
 
 	err = proto.ReadSetEnd()
@@ -170,7 +187,7 @@ func readMap(ctx context.Context, proto *thrift.TBinaryProtocol) (map[interface{
 		return nil, "", err
 	}
 
-	return m, "map<" + keyType.String() + "," + elemType.String() + ">", nil
+	return m, "map<" + realKeyAnno + "," + realValAnno + ">", nil
 }
 
 func readStruct(ctx context.Context, proto *thrift.TBinaryProtocol) (map[string]interface{}, error) {
